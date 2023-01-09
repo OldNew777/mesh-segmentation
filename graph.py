@@ -3,28 +3,37 @@ from binary_heap import BinaryHeap
 
 from mylogger import logger
 
-
 EPSILON = 1e-8
 
 
 class Graph:
     def __init__(self, n: int, m: int):
-        self.n = n
-        self.m = m
-        self.distance = np.zeros((n, n), dtype=np.float32)
-        self.dinic_vis = np.zeros(n, dtype=np.int32)
+        self.n = n  # vertexes number
+        self.m = m  # edges number
 
-        self._count = 1
-        self._h = np.ones(n, dtype=np.int32) * -1
-        self._next = np.zeros(m, dtype=np.int32)
-        self._to = np.zeros(m, dtype=np.int32)
-        self._w = np.zeros(m, dtype=np.float32)
-        self._s = 0
-        self._t = 0
+        # edge
+        self._count = 1  # count of edge
+        self._h = np.ones(n, dtype=np.int32) * -1  # index of list header of edges
+        self._next = np.zeros(m, dtype=np.int32)  # next edge
+        self._to = np.zeros(m, dtype=np.int32)  # index of edge to
+        self._w = np.zeros(m, dtype=np.float32)  # weight of edge
 
+        # distance
+        self.distance = np.zeros((n, n), dtype=np.float32)  # distance matrix
         self.visited = np.zeros(self.n, dtype=np.bool)  # cache for dijkstra
 
+        # dinic
+        self.dinic_vis = np.zeros(n, dtype=np.int32)  # dinic visit
+        self._s = 0  # source
+        self._t = 0  # target
+
     def add_edge(self, u: int, v: int, w: float, bidirectional: bool = True):
+        # point A, B, C, D, ...
+        # edge AB, AC, AD,...
+        # before:
+        # B -> C -> D
+        # after:
+        # E -> B -> C -> D
         self._count += 1
         self._next[self._count] = self._h[u]
         self._to[self._count] = v
@@ -34,10 +43,10 @@ class Graph:
         if bidirectional:
             self.add_edge(u=v, v=u, w=w, bidirectional=False)
 
-    def calculate_distance(self, st: int, d: np.ndarray):
+    def calculate_distance(self, src: int, d: np.ndarray):
         """
         Calculate the distance from st to all other points
-        :param st: start point
+        :param src: start point
         :param d: distances from point st to all other points
         """
         heap = BinaryHeap()
@@ -45,9 +54,9 @@ class Graph:
         for i in range(self.n):
             d[i] = np.inf
             visited[i] = False
-        heap.insert(st)
-        d[st] = 0
-        visited[st] = True
+        heap.insert(src)
+        d[src] = 0.
+        visited[src] = True
         while not heap.empty():
             u = heap.top()
             i = self._h[u]
