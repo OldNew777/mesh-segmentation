@@ -29,6 +29,12 @@ logger_instance.addHandler(file_handler)
 
 
 class MyLogger:
+    DEBUG = logging.DEBUG
+    INFO = logging.INFO
+    WARNING = logging.WARNING
+    ERROR = logging.ERROR
+    FATAL = logging.FATAL
+
     @classmethod
     def debug(cls, *msg):
         logger_instance.debug(' '.join([str(m) for m in msg]))
@@ -48,15 +54,13 @@ class MyLogger:
         logger_instance.error(' '.join([str(m) for m in msg]))
 
     @classmethod
-    def critical(cls, *msg):
+    def fatal(cls, *msg):
         logger_instance.critical(' '.join([str(m) for m in msg]))
-
-    fatal = critical
 
     @classmethod
     def assert_true(cls, cond: bool, *msg):
         if not cond:
-            cls.critical(*msg)
+            cls.fatal(*msg)
             sys.exit(1)
 
     @classmethod
@@ -66,6 +70,10 @@ class MyLogger:
     @classmethod
     def log(cls, level, *msg):
         logger_instance.log(level, ' '.join([str(m) for m in msg]))
+
+    @classmethod
+    def set_level(cls, level):
+        logger_instance.setLevel(level)
 
 
 logger = MyLogger

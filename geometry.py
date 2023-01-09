@@ -23,24 +23,24 @@ def init_palette(k: int):
 
 
 class Vertex:
-    def __init__(self, pos: np.ndarray, normal: np.ndarray, color=default_color):
+    def __init__(self, pos: np.ndarray, normal: np.ndarray):
         self.pos = pos
         self.normal = normal
-        self.color = color
 
     def __str__(self):
-        return f"Vertex pos: {self.pos}, normal: {self.normal}, color: {self.color}"
+        return f"Vertex pos: {self.pos}, normal: {self.normal}"
 
     def __repr__(self):
         return self.__str__()
 
 
 class Mesh:
-    def __init__(self, indexes: np.ndarray):
+    def __init__(self, indexes: np.ndarray, color=default_color):
         self.indexes = indexes
+        self.color = color
 
     def __str__(self):
-        return f"Mesh indexes: {self.indexes}"
+        return f"Mesh color: {self.color}, indexes: {self.indexes}"
 
     def __repr__(self):
         return self.__str__()
@@ -50,18 +50,18 @@ class Mesh:
 
 
 class Geometry:
+    eta = 0.2
+    delta = 0.8
+    epsilon = 1e-8
+    fuzzy_epsilon = 0.075
+    k_limit = 20
+    iter_max = 8
+
     def __init__(self, vertices: List[Vertex], meshes: List[Mesh]):
         self.v = vertices
         self.f = meshes
         self.edge: List[Tuple[int, int]] = []
         self.edge_w: List[Tuple[float, float]] = []
-
-        self.eta = 0.2
-        self.delta = 0.8
-        self.epsilon = 1e-8
-        self.fuzzy_epsilon = 0.075
-        self.k_limit = 20
-        self.iter_max = 8
 
         logger.debug(self.v)
         logger.debug(self.f)
@@ -82,13 +82,22 @@ class Geometry:
         for f in scene['face']:
             meshes.append(Mesh(f['vertex_indices']))
 
+        logger.info(f'len(v) = {len(vertices)}, len(f) = {len(meshes)}')
+
         return cls(vertices, meshes)
+
+    def __str__(self):
+        return f"Geometry vertices: {self.v}, meshes: {self.f}, edge: {self.edge}, edge_w: {self.edge_w}"
+
+    def __repr__(self):
+        return self.__str__()
 
     def split_mesh(self, k: int = -1) -> 'Geometry':
         logger.info(f'Splitting mesh into {k} segments')
 
         n_node = len(self.f) // 3
         m_edge = len(self.f) << 2
+        logger.info(f'n_node = {n_node}, m_edge = {m_edge}')
 
         graph = Graph(n_node, m_edge)
         self.build_graph(graph, n_node)
@@ -99,15 +108,20 @@ class Geometry:
             k = k_suggest
 
         self.cluster_k(graph=graph, repetition=repetition, k=k)
-        belong = self.final_decomposition(graph=graph, repetition=repetition, k=k)
+        belong = self.final_decomposition(graph=graph, repetition=repetition, k=k, n_node=n_node)
 
-        geometry_split = Geometry(vertices=self.v.copy(), meshes=self.f.copy())
+        geometry_split = Geometry(vertices=[], meshes=[])
         for i in range(n_node):
             for j in range(3):
-                if belong[i] == -1:
-                    geometry_split.v[i * 3 + j].color = default_color
-                else:
-                    geometry_split.v[i * 3 + j].color = palette[belong[i]]
+                geometry_split.v.append(self.v[self.f[i][j]])
+            if belong[i] == -1:
+                color = default_color
+            else:
+                color = palette[belong[i]]
+            geometry_split.f.append(Mesh(
+                indexes=np.array([i * 3 + 0, i * 3 + 1, i * 3 + 2], dtype=np.int),
+                color=color
+            ))
 
         del repetition
         del belong
@@ -123,19 +137,18 @@ class Geometry:
         self.edge_w.clear()
 
         for i in range(n_face):
-            base = i * 3
-
+            vertexes = [self.v[self.f[i][j]] for j in range(3)]
             center.append(
-                (self.v[base + 0].pos +
-                 self.v[base + 1].pos +
-                 self.v[base + 2].pos) / 3)
+                (vertexes[0].pos +
+                 vertexes[1].pos +
+                 vertexes[2].pos) / 3)
             average_normal = normalize(
-                (self.v[base + 0].normal +
-                 self.v[base + 1].normal +
-                 self.v[base + 2].normal))
+                (vertexes[0].normal +
+                 vertexes[1].normal +
+                 vertexes[2].normal))
             face_normal = normalize(
-                np.cross(self.v[self.f[i][0]].pos - self.v[self.f[i][1]].pos,
-                         self.v[self.f[i][1]].pos - self.v[self.f[i][2]].pos)
+                np.cross(vertexes[0].pos - vertexes[1].pos,
+                         vertexes[1].pos - vertexes[2].pos)
             )
             if np.dot(face_normal, average_normal) < 0:
                 face_normal = -face_normal
@@ -168,8 +181,8 @@ class Geometry:
         geo_dis_average /= edge_num
         angle_dis_average /= edge_num
         for i in range(edge_num):
-            self.edge_w[i][0] /= geo_dis_average
-            self.edge_w[i][1] /= angle_dis_average
+            self.edge_w[i] = (self.edge_w[i][0] / geo_dis_average,
+                              self.edge_w[i][1] / angle_dis_average)
             # edge weight = delta * geo_dis + (1 - alpha) * angle_dis
             cur_edge_weight = self.delta * self.edge_w[i][0] + \
                               (1 - self.delta) * self.edge_w[i][1]
@@ -274,7 +287,7 @@ class Geometry:
             for i in range(k):
                 repetition_backup[i] = repetition[i]
                 has[i].clear()
-            logger.info(' '.join(repetition))
+            logger.info(' '.join(map(str, repetition)))
 
             for j in range(graph.n):
                 belong[j] = -1
@@ -439,3 +452,19 @@ class Geometry:
         del fuzzy_v
 
         return belong
+
+    def separate_face_by_color(self) -> dict:
+        color_map = {}
+        for mesh in self.f:
+            if mesh.color not in color_map:
+                color_map[mesh.color] = {
+                    'f': [],
+                    'color': mesh.color,
+                }
+            color_map[mesh.color]['f'].append(mesh)
+        return color_map
+
+    def dump_opengl_render(self):
+        os.makedirs('./outputs')
+        os.makedirs('./outputs/model')
+

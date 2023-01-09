@@ -29,8 +29,10 @@ def parse_args(argv):
 
 
 if __name__ == "__main__":
+    logger.set_level(logger.INFO)
     logger.info(f'Init with random seed {seed}')
     random.seed(seed)
     args = parse_args(sys.argv[1:])
-    init_palette(args.k)
-    mesh_segmentation(filename=os.path.relpath(args.filename), k=args.k)
+    init_palette(max(args.k, Geometry.k_limit))
+    geometry = mesh_segmentation(filename=os.path.relpath(args.filename), k=args.k)
+    logger.debug(geometry)
