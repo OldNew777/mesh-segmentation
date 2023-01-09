@@ -311,7 +311,7 @@ class Geometry:
                         p[i][j] += graph.distance[node][j]
                     p[i][j] = node_belong / p[i][j]
                     dis_inv_sum += p[i][j]
-                if belong[j]!= -1:
+                if belong[j] != -1:
                     for i in range(k):
                         p[i][j] = 0.
                     p[belong[j]][j] = 1.
@@ -342,7 +342,7 @@ class Geometry:
                     repetition[i] = repetition_backup[i]
             converge = True
             for i in range(k):
-                if repetition[i]!= repetition_backup[i]:
+                if repetition[i] != repetition_backup[i]:
                     converge = False
                     break
             if iter == self.iter_max:
@@ -354,6 +354,88 @@ class Geometry:
         del has
 
     def final_decomposition(self, graph: Graph, repetition: np.ndarray, k: int, n_node: int) -> np.ndarray:
-        belong = np.array()
+        belong = np.zeros(n_node, dtype=np.int)
+        fuzzy_type = k * (k - 1) >> 1
+        fuzzy_v: List[List[int]] = [[] for _ in range(fuzzy_type)]
+        for j in range(graph.n):
+            dis_min = dis_cmin = sys.float_info.max
+            belong_min = belong_cmin = -1
+            for i in range(k):
+                if graph.distance[repetition[i]][j] < dis_min:
+                    dis_cmin = dis_min
+                    belong_cmin = belong_min
+                    dis_min = graph.distance[repetition[i]][j]
+                    belong_min = i
+                elif graph.distance[repetition[i]][j] < dis_cmin:
+                    dis_cmin = graph.distance[repetition[i]][j]
+                    belong_cmin = i
+            belong[j] = -1
+            if dis_min < self.epsilon:
+                belong[j] = belong_min
+            else:
+                p = dis_cmin / (dis_min + dis_cmin)
+                if p > 0.5 + self.fuzzy_epsilon:
+                    belong[j] = belong_min
+                else:
+                    if belong_min < belong_cmin:
+                        belong_min, belong_cmin = belong_cmin, belong_min
+                    ind = ((belong_min * (belong_min - 1)) >> 1) + belong_cmin
+                    fuzzy_v[ind].append(j)
+
+        flow_graph = Graph(n=graph.n + 2, m=graph.m)
+        flag = np.zeros(graph.n, dtype=np.bool)
+        edge_num = len(self.edge)
+        cur_ind = 0
+        for s in range(k):
+            for t in range(s):
+                if len(fuzzy_v[cur_ind]) == 0:
+                    cur_ind += 1
+                    continue
+                flow_graph.clear()
+                for i in range(graph.n):
+                    flag[i] = False
+                for node in fuzzy_v[cur_ind]:
+                    flag[node] = True
+                for i in range(edge_num):
+                    if not flag[self.edge[i][0]] and not flag[self.edge[i][1]]:
+                        continue
+                    u = self.edge[i][0]
+                    v = self.edge[i][1]
+                    weight = 1. / (1. + self.edge_w[i][1])
+                    if flag[u] and flag[v]:
+                        flow_graph.add_edge(u=u, v=v, weight=weight)
+                    elif flag[u]:
+                        if belong[v] == s:
+                            flow_graph.add_edge(u=v, v=u, weight=weight, bidirectional=False)
+                            flow_graph.add_edge(u=u, v=v, weight=0., bidirectional=False)
+                            flow_graph.add_edge(u=graph.n, v=v, weight=sys.float_info.max, bidirectional=False)
+                            flow_graph.add_edge(u=v, v=graph.n, weight=0., bidirectional=False)
+                        elif belong[v] == t:
+                            flow_graph.add_edge(u=u, v=v, weight=weight, bidirectional=False)
+                            flow_graph.add_edge(u=v, v=u, weight=0., bidirectional=False)
+                            flow_graph.add_edge(u=v, v=graph.n + 1, weight=sys.float_info.max, bidirectional=False)
+                            flow_graph.add_edge(u=graph.n + 1, v=v, weight=0., bidirectional=False)
+                    else:
+                        if belong[u] == s:
+                            flow_graph.add_edge(u=u, v=v, weight=weight, bidirectional=False)
+                            flow_graph.add_edge(u=v, v=u, weight=0., bidirectional=False)
+                            flow_graph.add_edge(u=graph.n, v=u, weight=sys.float_info.max, bidirectional=False)
+                            flow_graph.add_edge(u=u, v=graph.n, weight=0., bidirectional=False)
+                        elif belong[u] == t:
+                            flow_graph.add_edge(u=v, v=u, weight=weight, bidirectional=False)
+                            flow_graph.add_edge(u=u, v=v, weight=0., bidirectional=False)
+                            flow_graph.add_edge(u=u, v=graph.n + 1, weight=sys.float_info.max, bidirectional=False)
+                            flow_graph.add_edge(u=graph.n + 1, v=u, weight=0., bidirectional=False)
+                cost = flow_graph.dinic(s=graph.n, t=graph.n + 1)
+                for node in fuzzy_v[cur_ind]:
+                    if flow_graph.dinic_vis[node] != -1:
+                        belong[node] = s
+                    else:
+                        belong[node] = t
+                cur_ind += 1
+
+        del flag
+        del flow_graph
+        del fuzzy_v
 
         return belong

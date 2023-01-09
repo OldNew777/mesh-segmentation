@@ -27,6 +27,11 @@ class Graph:
         self._s = 0  # source
         self._t = 0  # target
 
+    def clear(self):
+        self._count = 1
+        for i in range(self.n):
+            self._h[i] = -1
+
     def add_edge(self, u: int, v: int, weight: float, bidirectional: bool = True):
         # point A, B, C, D, ...
         # edge AB, AC, AD,...
