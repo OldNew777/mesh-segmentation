@@ -27,7 +27,7 @@ class Graph:
         self._s = 0  # source
         self._t = 0  # target
 
-    def add_edge(self, u: int, v: int, w: float, bidirectional: bool = True):
+    def add_edge(self, u: int, v: int, weight: float, bidirectional: bool = True):
         # point A, B, C, D, ...
         # edge AB, AC, AD,...
         # before:
@@ -37,11 +37,11 @@ class Graph:
         self._count += 1
         self._next[self._count] = self._h[u]
         self._to[self._count] = v
-        self._w[self._count] = w
+        self._w[self._count] = weight
         self._h[u] = self._count
 
         if bidirectional:
-            self.add_edge(u=v, v=u, w=w, bidirectional=False)
+            self.add_edge(u=v, v=u, weight=weight, bidirectional=False)
 
     def calculate_distance(self, src: int, d: np.ndarray):
         """

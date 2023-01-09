@@ -18,7 +18,7 @@ def mesh_segmentation(filename: os.path, k: int) -> Geometry:
         sys.exit(1)
 
     meshes = Geometry.from_ply(filename)
-    return meshes.split_meshes()
+    return meshes.split_mesh(k=k)
 
 
 def parse_args(argv):
@@ -33,4 +33,4 @@ if __name__ == "__main__":
     random.seed(seed)
     args = parse_args(sys.argv[1:])
     init_palette(args.k)
-    mesh_segmentation(args.filename, args.k)
+    mesh_segmentation(filename=os.path.relpath(args.filename), k=args.k)
