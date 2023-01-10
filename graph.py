@@ -2,6 +2,7 @@ import numpy as np
 from binary_heap import BinaryHeap
 
 from mylogger import logger
+from func import *
 
 EPSILON = 1e-8
 
@@ -77,8 +78,21 @@ class Graph:
             visited[u] = False
 
     def calculate_all_distance(self):
-        for i in range(self.n):
-            self.calculate_distance(i, self.distance[i])
+        @time_it
+        def calculate_all_distance():
+            for i in range(self.n):
+                self.calculate_distance(i, self.distance[i])
+
+        @time_it
+        def test_distance_symmetric():
+            for i in range(self.n):
+                for j in range(self.n):
+                    logger.assert_true(
+                        abs(self.distance[i][j] - self.distance[j][i]) < EPSILON,
+                        f'd[{i}][{j}]={self.distance[i][j]}, d[{j}][{i}]={self.distance[j][i]}: not symmetric')
+
+        calculate_all_distance()
+        test_distance_symmetric()
 
     def dinic_bfs(self):
         heap = BinaryHeap()

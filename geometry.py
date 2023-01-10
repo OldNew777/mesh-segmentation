@@ -1,5 +1,6 @@
 import math
 import os
+import shutil
 import sys
 from typing import Tuple, List
 
@@ -63,10 +64,8 @@ class Geometry:
         self.edge: List[Tuple[int, int]] = []
         self.edge_w: List[Tuple[float, float]] = []
 
-        logger.debug(self.v)
-        logger.debug(self.f)
-
     @classmethod
+    @time_it
     def from_ply(cls, ply_path: os.path) -> 'Geometry':
         logger.assert_true(ply_path.endswith('.ply'), 'File must be a .ply file')
         scene = PlyData.read(ply_path)
@@ -92,23 +91,25 @@ class Geometry:
     def __repr__(self):
         return self.__str__()
 
+    @time_it
     def split_mesh(self, k: int = -1) -> 'Geometry':
-        logger.info(f'Splitting mesh into {k} segments')
+        logger.info(f'Splitting mesh geometry into {k} segments')
 
-        n_node = len(self.f) // 3
-        m_edge = len(self.f) << 2
+        n_node = len(self.f)
+        m_edge = len(self.f) * 4
         logger.info(f'n_node = {n_node}, m_edge = {m_edge}')
 
         graph = Graph(n_node, m_edge)
         self.build_graph(graph, n_node)
         graph.calculate_all_distance()
 
-        repetition, k_suggest = self.choose_k(graph=graph, k=k)
+        rep, k_suggest = self.choose_k(graph=graph, k=k)
         if k <= 0:
             k = k_suggest
+        logger.info(f'k = {k} after choose_k')
 
-        self.cluster_k(graph=graph, repetition=repetition, k=k)
-        belong = self.final_decomposition(graph=graph, repetition=repetition, k=k, n_node=n_node)
+        self.cluster_k(graph=graph, rep=rep, k=k)
+        belong = self.final_decomposition(graph=graph, rep=rep, k=k, n_node=n_node)
 
         geometry_split = Geometry(vertices=[], meshes=[])
         for i in range(n_node):
@@ -119,15 +120,18 @@ class Geometry:
             else:
                 color = palette[belong[i]]
             geometry_split.f.append(Mesh(
-                indexes=np.array([i * 3 + 0, i * 3 + 1, i * 3 + 2], dtype=np.int),
+                indexes=np.array([i * 3 + j for j in range(3)], dtype=np.int),
                 color=color
             ))
 
-        del repetition
+        del rep
         del belong
         del graph
+
+        logger.debug(geometry_split)
         return geometry_split
 
+    @time_it
     def build_graph(self, graph: Graph, n_face: int):
         edge_map = {}
         center = []
@@ -145,7 +149,7 @@ class Geometry:
             average_normal = normalize(
                 (vertexes[0].normal +
                  vertexes[1].normal +
-                 vertexes[2].normal))
+                 vertexes[2].normal) / 3)
             face_normal = normalize(
                 np.cross(vertexes[0].pos - vertexes[1].pos,
                          vertexes[1].pos - vertexes[2].pos)
@@ -229,11 +233,12 @@ class Geometry:
 
         return geo_dis, angle_dis
 
+    @time_it
     def choose_k(self, graph: Graph, k: int) -> Tuple[np.ndarray, int]:
         lim = k
         if lim <= 0:
             lim = self.k_limit
-        repetition = np.zeros(lim, dtype=np.int)
+        rep = np.zeros(lim, dtype=np.int)
         Gk = []
 
         choose_min = sys.float_info.max
@@ -243,16 +248,16 @@ class Geometry:
                 dis_sum += graph.distance[i][j]
             if dis_sum < choose_min:
                 choose_min = dis_sum
-                repetition[0] = i
+                rep[0] = i
         for cur in range(1, lim):
             choose_max = -sys.float_info.max
             for i in range(graph.n):
                 dis_min = sys.float_info.max
                 for j in range(cur):
-                    dis_min = min(dis_min, graph.distance[i][repetition[j]])
+                    dis_min = min(dis_min, graph.distance[i][rep[j]])
                 if dis_min > choose_max:
                     choose_max = dis_min
-                    repetition[cur] = i
+                    rep[cur] = i
             Gk.append(choose_max)
 
         if k == 2:
@@ -260,8 +265,8 @@ class Geometry:
             for i in range(graph.n):
                 for j in range(i + 1, graph.n):
                     if graph.distance[i][j] > dis_max:
-                        repetition[0] = i
-                        repetition[1] = j
+                        rep[0] = i
+                        rep[1] = j
                         dis_max = graph.distance[i][j]
 
         k_suggest = -1
@@ -272,10 +277,11 @@ class Geometry:
                 k_suggest = i + 2
 
         del Gk
-        return repetition, k_suggest
+        return rep, k_suggest
 
-    def cluster_k(self, graph: Graph, repetition: np.ndarray, k: int):
-        repetition_backup = np.zeros(k, dtype=np.int)
+    @time_it
+    def cluster_k(self, graph: Graph, rep: np.ndarray, k: int):
+        rep_backup = np.zeros(k, dtype=np.int)
         belong = np.zeros(graph.n, dtype=np.int)
         converge = False
         p = np.zeros(shape=(k, graph.n), dtype=np.float)
@@ -285,18 +291,18 @@ class Geometry:
         while not converge:
             iter += 1
             for i in range(k):
-                repetition_backup[i] = repetition[i]
+                rep_backup[i] = rep[i]
                 has[i].clear()
-            logger.info(' '.join(map(str, repetition)))
+            logger.info(f'Iter {iter}: REP = ' + ' '.join(map(str, rep)))
 
             for j in range(graph.n):
                 belong[j] = -1
                 dis_inv_sum = 0.
                 for i in range(k):
-                    if graph.distance[repetition[i]][j] < self.epsilon:
+                    if graph.distance[rep[i]][j] < self.epsilon:
                         belong[j] = i
                         break
-                    dis_inv_sum += 1. / graph.distance[repetition[i]][j]
+                    dis_inv_sum += 1. / graph.distance[rep[i]][j]
                 if belong[j] != -1:
                     for i in range(k):
                         p[i][j] = 0.
@@ -304,7 +310,7 @@ class Geometry:
                 else:
                     p_max = -sys.float_info.max
                     for i in range(k):
-                        p[i][j] = (1. / graph.distance[repetition[i]][j]) / dis_inv_sum
+                        p[i][j] = (1. / graph.distance[rep[i]][j]) / dis_inv_sum
                         if p[i][j] > p_max:
                             p_max = p[i][j]
                             belong[j] = i
@@ -315,7 +321,7 @@ class Geometry:
                 belong[j] = -1
                 dis_inv_sum = 0.
                 for i in range(k):
-                    if graph.distance[repetition[i]][j] < self.epsilon:
+                    if graph.distance[rep[i]][j] < self.epsilon:
                         belong[j] = i
                         break
                     p[i][j] = 0.
@@ -340,33 +346,34 @@ class Geometry:
                         dis_sum += p[i][j] * graph.distance[cur][j]
                     if dis_sum < dis_min:
                         dis_min = dis_sum
-                        repetition[i] = cur
+                        rep[i] = cur
 
             check_equal = False
             for i in range(k):
                 for j in range(i):
-                    if repetition[i] == repetition[j]:
+                    if rep[i] == rep[j]:
                         check_equal = True
                         break
                 if check_equal:
                     break
             if check_equal:
                 for i in range(k):
-                    repetition[i] = repetition_backup[i]
+                    rep[i] = rep_backup[i]
             converge = True
             for i in range(k):
-                if repetition[i] != repetition_backup[i]:
+                if rep[i] != rep_backup[i]:
                     converge = False
                     break
             if iter == self.iter_max:
                 break
 
         del belong
-        del repetition_backup
+        del rep_backup
         del p
         del has
 
-    def final_decomposition(self, graph: Graph, repetition: np.ndarray, k: int, n_node: int) -> np.ndarray:
+    @time_it
+    def final_decomposition(self, graph: Graph, rep: np.ndarray, k: int, n_node: int) -> np.ndarray:
         belong = np.zeros(n_node, dtype=np.int)
         fuzzy_type = k * (k - 1) >> 1
         fuzzy_v: List[List[int]] = [[] for _ in range(fuzzy_type)]
@@ -374,13 +381,13 @@ class Geometry:
             dis_min = dis_cmin = sys.float_info.max
             belong_min = belong_cmin = -1
             for i in range(k):
-                if graph.distance[repetition[i]][j] < dis_min:
+                if graph.distance[rep[i]][j] < dis_min:
                     dis_cmin = dis_min
                     belong_cmin = belong_min
-                    dis_min = graph.distance[repetition[i]][j]
+                    dis_min = graph.distance[rep[i]][j]
                     belong_min = i
-                elif graph.distance[repetition[i]][j] < dis_cmin:
-                    dis_cmin = graph.distance[repetition[i]][j]
+                elif graph.distance[rep[i]][j] < dis_cmin:
+                    dis_cmin = graph.distance[rep[i]][j]
                     belong_cmin = i
             belong[j] = -1
             if dis_min < self.epsilon:
@@ -453,18 +460,71 @@ class Geometry:
 
         return belong
 
+    @time_it
     def separate_face_by_color(self) -> dict:
         color_map = {}
         for mesh in self.f:
-            if mesh.color not in color_map:
-                color_map[mesh.color] = {
-                    'f': [],
-                    'color': mesh.color,
-                }
-            color_map[mesh.color]['f'].append(mesh)
+            key_color = (mesh.color[0], mesh.color[1], mesh.color[2])
+            if key_color not in color_map:
+                color_map[key_color] = []
+            color_map[key_color].append(mesh)
+
+        logger.debug(f'len(self.f) = {len(self.f)}')
+        logger.debug(color_map)
+        color_mesh_num = {}
+        for color, mesh_list in color_map.items():
+            color_mesh_num[color] = len(mesh_list)
+        logger.info(f'color_map: {color_mesh_num}')
+
         return color_map
 
-    def dump_opengl_render(self):
-        os.makedirs('./outputs')
-        os.makedirs('./outputs/model')
+    @time_it
+    def dump_obj(self, root_dir: os.path):
+        if os.path.exists(root_dir):
+            shutil.rmtree(root_dir)
+        model_dir = os.path.join(root_dir, 'model')
+        os.makedirs(model_dir, exist_ok=True)
+        mtl_filename = 'material.mtl'
+        obj_filename = os.path.join(model_dir, f'model.obj')
 
+        colors = {}
+        index = 0
+        color_map = self.separate_face_by_color()
+        with open(obj_filename, 'w') as file:
+            file.write(f'mtllib {mtl_filename}\n')
+            for color, faces in color_map.items():
+                obj = [
+                    '',
+                    f'g obj_part_{index}',
+                    f'usemtl color_{index}',
+                ]
+                colors[f'color_{index}'] = color
+                index += 1
+
+                f_num = len(faces)
+                pos = []
+                normal = []
+                for f in faces:
+                    for i in range(3):
+                        pos.append(self.v[f[i]].pos)
+                        normal.append(self.v[f[i]].normal)
+                assert (f_num * 3) == len(pos) == len(normal)
+                for x in pos:
+                    obj.append(f'v {x[0]} {x[1]} {x[2]}')
+                for n in normal:
+                    obj.append(f'vn {n[0]} {n[1]} {n[2]}')
+                for i in range(-f_num, 0):
+                    obj.append(f'f {3 * i}//{3 * i} {3 * i + 1}//{3 * i + 1} {3 * i + 2}//{3 * i + 2}')
+
+                for i in range(len(obj)):
+                    obj[i] += '\n'
+
+                file.writelines(obj)
+
+        with open(os.path.join(model_dir, mtl_filename), 'w') as f:
+            for name, color in colors.items():
+                f.writelines([
+                    f'newmtl {name}\n',
+                    f'\tKa 1.0 1.0 1.0\n',
+                    f'\tKd {color[0]} {color[1]} {color[2]}\n\n',
+                ])
