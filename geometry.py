@@ -429,8 +429,8 @@ class Geometry:
                 flow_graph.clear()
                 for i in range(graph.n):
                     flag[i] = False
-                for node in fuzzy_v[cur_ind]:
-                    flag[node] = True
+                for i in fuzzy_v[cur_ind]:
+                    flag[i] = True
                 for i in range(edge_num):
                     if not flag[self.edge[i][0]] and not flag[self.edge[i][1]]:
                         continue
