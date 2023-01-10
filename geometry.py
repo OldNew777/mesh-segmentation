@@ -92,8 +92,8 @@ class Geometry:
         return self.__str__()
 
     @time_it
-    def split_mesh(self, k: int = -1) -> 'Geometry':
-        logger.info(f'Splitting mesh geometry into {k} segments')
+    def split_mesh(self, k_max: int = -1) -> 'Geometry':
+        logger.info(f'Splitting mesh geometry into k_max={k_max} segments')
 
         n_node = len(self.f)
         m_edge = len(self.f) * 4
@@ -103,9 +103,9 @@ class Geometry:
         self.build_graph(graph, n_node)
         graph.calculate_all_distance()
 
-        rep, k_suggest = self.choose_k(graph=graph, k=k)
-        if k <= 0:
-            k = k_suggest
+        rep, k_suggest = self.choose_k(graph=graph, k_max=k_max)
+        k = k_suggest
+        rep = rep[:k]
         logger.info(f'k = {k} after choose_k')
 
         self.cluster_k(graph=graph, rep=rep, k=k)
@@ -145,11 +145,11 @@ class Geometry:
             center.append(
                 (vertexes[0].pos +
                  vertexes[1].pos +
-                 vertexes[2].pos) / 3)
+                 vertexes[2].pos) / 3)  # center of triangle mesh
             average_normal = normalize(
                 (vertexes[0].normal +
                  vertexes[1].normal +
-                 vertexes[2].normal) / 3)
+                 vertexes[2].normal))
             face_normal = normalize(
                 np.cross(vertexes[0].pos - vertexes[1].pos,
                          vertexes[1].pos - vertexes[2].pos)
@@ -160,11 +160,13 @@ class Geometry:
 
             for j in range(3):
                 edge_temp = (self.f[i][j], self.f[i][(j + 1) % 3])
+                # ensure edge_temp[0] >= edge_temp[1] for mapping
                 if edge_temp[0] < edge_temp[1]:
                     edge_temp = (edge_temp[1], edge_temp[0])
                 if edge_temp not in edge_map:
                     edge_map[edge_temp] = i
                 else:
+                    # overlapping edge
                     u = edge_map[edge_temp]
                     self.edge.append((u, i))
                     edge_weight = self.calculate_weight(
@@ -176,6 +178,7 @@ class Geometry:
                     )
                     self.edge_w.append(edge_weight)
 
+        # calculate weight of edges
         geo_dis_average = 0.
         angle_dis_average = 0.
         for dis_tuple in self.edge_w:
@@ -187,7 +190,7 @@ class Geometry:
         for i in range(edge_num):
             self.edge_w[i] = (self.edge_w[i][0] / geo_dis_average,
                               self.edge_w[i][1] / angle_dis_average)
-            # edge weight = delta * geo_dis + (1 - alpha) * angle_dis
+            # edge weight = alpha * geo_dis + (1 - alpha) * angle_dis
             cur_edge_weight = self.delta * self.edge_w[i][0] + \
                               (1 - self.delta) * self.edge_w[i][1]
             graph.add_edge(u=self.edge[i][0], v=self.edge[i][1], weight=cur_edge_weight)
@@ -225,23 +228,24 @@ class Geometry:
         geo_dis = math.sqrt(horizon * horizon + verticle * verticle)
 
         center_uv = center_v - center_u
-        cos_angle = np.dot(normal_u, normal_v)
-        if np.dot(center_uv, normal_u) < 0:
-            angle_dis = self.eta * (1 - cos_angle)
-        else:
-            angle_dis = 1 - cos_angle
+        cos_alpha_uv = np.dot(normal_u, normal_v)
+        if np.dot(center_uv, normal_u) < 0:  # Convex
+            angle_dis = self.eta * (1 - cos_alpha_uv)
+        else:  # concave
+            angle_dis = 1 - cos_alpha_uv
 
         return geo_dis, angle_dis
 
     @time_it
-    def choose_k(self, graph: Graph, k: int) -> Tuple[np.ndarray, int]:
-        lim = k
+    def choose_k(self, graph: Graph, k_max: int) -> Tuple[np.ndarray, int]:
+        lim = k_max
         if lim <= 0:
             lim = self.k_limit
         rep = np.zeros(lim, dtype=np.int)
         Gk = []
 
         choose_min = sys.float_info.max
+        # First, choose the first representative
         for i in range(graph.n):
             dis_sum = 0.
             for j in range(graph.n):
@@ -249,6 +253,7 @@ class Geometry:
             if dis_sum < choose_min:
                 choose_min = dis_sum
                 rep[0] = i
+        # Add other representatives 1 by 1
         for cur in range(1, lim):
             choose_max = -sys.float_info.max
             for i in range(graph.n):
@@ -260,7 +265,8 @@ class Geometry:
                     rep[cur] = i
             Gk.append(choose_max)
 
-        if k == 2:
+        if k_max == 2:
+            # Find the most distant pair of representatives
             dis_max = -sys.float_info.max
             for i in range(graph.n):
                 for j in range(i + 1, graph.n):
@@ -269,47 +275,57 @@ class Geometry:
                         rep[1] = j
                         dis_max = graph.distance[i][j]
 
+        # Choose k_suggest by the greatest 1st derivative of G
         k_suggest = -1
         grad_max = -sys.float_info.max
         for i in range(1, lim - 1):
-            if Gk[i - 1] - Gk[i] > grad_max:
-                grad_max = Gk[i - 1] - Gk[i]
+            grad = Gk[i - 1] - Gk[i]
+            if grad > grad_max:
+                grad_max = grad
                 k_suggest = i + 2
+
+        logger.info(' '.join(map(
+            lambda k_m_2, grad: f'G({k_m_2+2})={grad}',
+            enumerate(Gk)
+        )))
 
         del Gk
         return rep, k_suggest
 
     @time_it
     def cluster_k(self, graph: Graph, rep: np.ndarray, k: int):
-        rep_backup = np.zeros(k, dtype=np.int)
+        rep_bak = np.zeros(k, dtype=np.int)
         belong = np.zeros(graph.n, dtype=np.int)
         converge = False
-        p = np.zeros(shape=(k, graph.n), dtype=np.float)
-        has: List[List[int]] = [[] for _ in range(k)]
+        p = np.zeros(shape=(k, graph.n), dtype=np.float)  # probability of each face belonging to each cluster
+        has: List[List[int]] = [[] for _ in range(k)]  # has[i] = [j, ...] means rep[i] has j
         iter = 0
 
         while not converge:
             iter += 1
             for i in range(k):
-                rep_backup[i] = rep[i]
+                rep_bak[i] = rep[i]
                 has[i].clear()
             logger.info(f'Iter {iter}: REP = ' + ' '.join(map(str, rep)))
 
             for j in range(graph.n):
                 belong[j] = -1
-                dis_inv_sum = 0.
+                dis_inv_sum = 0.  # denominator of P_pj(fi)
                 for i in range(k):
                     if graph.distance[rep[i]][j] < self.epsilon:
                         belong[j] = i
                         break
                     dis_inv_sum += 1. / graph.distance[rep[i]][j]
                 if belong[j] != -1:
+                    # if j is a representative, then P_pj(fi) = 1
                     for i in range(k):
                         p[i][j] = 0.
                     p[belong[j]][j] = 1.
                 else:
+                    # if j is not a representative, then P_pj(fi) = dist / dis_inv_sum
                     p_max = -sys.float_info.max
                     for i in range(k):
+                        # set p_max as belong
                         p[i][j] = (1. / graph.distance[rep[i]][j]) / dis_inv_sum
                         if p[i][j] > p_max:
                             p_max = p[i][j]
@@ -353,22 +369,21 @@ class Geometry:
                 for j in range(i):
                     if rep[i] == rep[j]:
                         check_equal = True
-                        break
-                if check_equal:
-                    break
             if check_equal:
                 for i in range(k):
-                    rep[i] = rep_backup[i]
+                    rep[i] = rep_bak[i]
+            # check if rep changes during this iter
             converge = True
             for i in range(k):
-                if rep[i] != rep_backup[i]:
+                if rep[i] != rep_bak[i]:
                     converge = False
                     break
+            # break if iter reaches limit
             if iter == self.iter_max:
                 break
 
         del belong
-        del rep_backup
+        del rep_bak
         del p
         del has
 

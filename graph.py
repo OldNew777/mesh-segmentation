@@ -1,6 +1,6 @@
 import numpy as np
-from binary_heap import BinaryHeap
 from collections import deque
+from queue import PriorityQueue
 
 from mylogger import logger
 from func import *
@@ -26,8 +26,6 @@ class Graph:
 
         # dinic
         self.dinic_vis = np.zeros(n, dtype=np.int32)  # dinic visit
-        self._s = 0  # source
-        self._t = 0  # target
 
     def clear(self):
         self._count = 1
@@ -52,50 +50,45 @@ class Graph:
 
     def calculate_distance(self, src: int, d: np.ndarray):
         """
-        Calculate the distance from st to all other points
+        Calculate the distance from st to all other points (dijkstra)
         :param src: start point
         :param d: distances from point st to all other points
         """
 
-        # heap = BinaryHeap()
-        Q = deque()
+        class DijkstraPoint(object):
+            def __init__(self, index: int):
+                self.index = index
 
+            def __lt__(self, other):
+                return d[self.index] < d[other.index]
+
+        Q = PriorityQueue()
         visited = self.visited
         for i in range(self.n):
             d[i] = np.inf
             visited[i] = False
-
-        # heap.insert(src)
-        Q.append(src)
-
+        Q.put(DijkstraPoint(src))
         d[src] = 0.
         visited[src] = True
-
-        # while not heap.empty():
-        #     u = heap.top()
-
-        while len(Q) > 0:
-            u = Q[0]
-
+        while not Q.empty():
+            u = Q.get().index
             i = self._h[u]
             while i != -1:
                 v = self._to[i]
                 if d[v] > d[u] + self._w[i]:
                     d[v] = d[u] + self._w[i]
                     if not visited[v]:
-
-                        # heap.insert(v)
-                        Q.append(v)
-
+                        Q.put(DijkstraPoint(v))
                         visited[v] = True
                 i = self._next[i]
-
-            # heap.pop()
-            Q.popleft()
-
             visited[u] = False
 
     def calculate_all_distance(self):
+        """
+        Calculate the distance from all points to all other points (dijkstra)
+        :return:
+        """
+
         @time_it
         def calculate_all_distance():
             for i in range(self.n):
@@ -113,46 +106,38 @@ class Graph:
         # test_distance_symmetric()
         # should not be symmetric because weight of edge is not symmetric
 
-    def dinic_bfs(self):
-        # heap = BinaryHeap()
+    def dinic_bfs(self, s: int, t: int):
+        """
+        find if s to t has path
+        """
         Q = deque()
-
         for i in range(self.n):
             self.dinic_vis[i] = -1
+        Q.append(s)
 
-        # heap.insert(self._s)
-        Q.append(self._s)
-
-        self.dinic_vis[self._s] = 0
-
-        # while not heap.empty():
-        #     now = heap.pop()
+        self.dinic_vis[s] = 0
         while len(Q) > 0:
             now = Q.popleft()
-
             i = self._h[now]
             while i != -1:
                 v = self._to[i]
                 if self._w[i] > 0 and self.dinic_vis[v] == -1:
                     self.dinic_vis[v] = self.dinic_vis[now] + 1
-
-                    # heap.insert(v)
                     Q.append(v)
-
                 i = self._next[i]
-        if self.dinic_vis[self._t] == -1:
+        if self.dinic_vis[t] == -1:
             return False
         return True
 
-    def dinic_dfs(self, x: int, f: float):
-        if x == self._t:
+    def dinic_dfs(self, x: int, f: float, t: int):
+        if x == t:
             return f
         used = 0.
         i = self._h[x]
         while i != -1:
             v = self._to[i]
             if self._w[i] > 0 and self.dinic_vis[v] == self.dinic_vis[x] + 1:
-                cap = self.dinic_dfs(v, min(f - used, self._w[i]))
+                cap = self.dinic_dfs(v, min(f - used, self._w[i]), t)
                 self._w[i] -= cap
                 self._w[i ^ 1] += cap
                 used += cap
@@ -164,9 +149,10 @@ class Graph:
         return used
 
     def dinic(self, s: int, t: int):
-        self._s = s
-        self._t = t
+        """
+        find min cut
+        """
         ans = 0.
-        while self.dinic_bfs():
-            ans += self.dinic_dfs(s, np.inf)
+        while self.dinic_bfs(s, t):
+            ans += self.dinic_dfs(s, np.inf, t)
         return ans
