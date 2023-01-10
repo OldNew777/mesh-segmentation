@@ -479,18 +479,16 @@ class Geometry:
         return color_map
 
     @time_it
-    def dump_obj(self, root_dir: os.path):
-        if os.path.exists(root_dir):
-            shutil.rmtree(root_dir)
-        model_dir = os.path.join(root_dir, 'model')
+    def export_obj(self, root_dir: os.path):
+        model_dir = os.path.join(root_dir, 'obj')
         os.makedirs(model_dir, exist_ok=True)
         mtl_filename = 'material.mtl'
-        obj_filename = os.path.join(model_dir, f'model.obj')
+        model_filename = os.path.join(model_dir, f'model.obj')
 
         colors = {}
         index = 0
         color_map = self.separate_face_by_color()
-        with open(obj_filename, 'w') as file:
+        with open(model_filename, 'w') as file:
             file.write(f'mtllib {mtl_filename}\n')
             for color, faces in color_map.items():
                 obj = [
@@ -528,3 +526,41 @@ class Geometry:
                     f'\tKa 1.0 1.0 1.0\n',
                     f'\tKd {color[0]} {color[1]} {color[2]}\n\n',
                 ])
+
+    @time_it
+    def export_ply(self, root_dir: os.path):
+        if os.path.exists(root_dir):
+            shutil.rmtree(root_dir)
+        model_dir = os.path.join(root_dir, 'ply')
+        os.makedirs(model_dir, exist_ok=True)
+        model_filename = os.path.join(model_dir, f'model.ply')
+
+        with open(model_filename, 'w') as file:
+            file.writelines([
+                'ply\n',
+                'format ascii 1.0\n',
+                'comment author: Xin Chen\n',
+                f'element vertex {len(self.v)}\n',
+                'property float x\n',
+                'property float y\n',
+                'property float z\n',
+                'property float nx\n',
+                'property float ny\n',
+                'property float nz\n',
+                'property uchar red\n',
+                'property uchar green\n',
+                'property uchar blue\n',
+                f'element face {len(self.f)}\n',
+                'property list uchar int vertex_indices\n',
+                'end_header\n',
+            ])
+
+            for index, v in enumerate(self.v):
+                color = np.array(self.f[index // 3].color * 255, dtype=np.uint8)
+                file.write(
+                    f'{v.pos[0]} {v.pos[1]} {v.pos[2]} '
+                    f'{v.normal[0]} {v.normal[1]} {v.normal[2]} '
+                    f'{color[0]} {color[1]} {color[2]}\n')
+
+            for face in self.f:
+                file.write(f'3 {face[0]} {face[1]} {face[2]}\n')

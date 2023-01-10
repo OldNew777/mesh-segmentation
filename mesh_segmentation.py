@@ -1,12 +1,11 @@
 import os
 import sys
-import numpy as np
 import random
 from argparse import ArgumentParser
+import shutil
 
 from mylogger import logger
 from geometry import Geometry, init_palette
-from graph import Graph
 
 
 def mesh_segmentation(filename: os.path, k: int) -> Geometry:
@@ -22,15 +21,20 @@ def parse_args(argv):
     parser = ArgumentParser()
     parser.add_argument('-f', '--filename', type=str, help='The path to the .ply file', default='./data/horse.ply')
     parser.add_argument('-k', '--k', type=int, help='The number of clusters', default=4)
+    parser.add_argument('-s', '--seed', type=int, help='The seed of random', default=3984572)
     return parser.parse_known_args(argv)[0]
 
 
 if __name__ == "__main__":
     logger.set_level(logger.INFO)
-    seed = 3984572
-    logger.info(f'Init with random seed {seed}')
-    random.seed(seed)
     args = parse_args(sys.argv[1:])
+    logger.info(f'Init with random seed {args.seed}')
+    random.seed(args.seed)
     init_palette(max(args.k, Geometry.k_limit))
     geometry = mesh_segmentation(filename=os.path.relpath(args.filename), k=args.k)
-    geometry.dump_obj(root_dir=os.path.relpath('./outputs'))
+
+    root_dir = os.path.relpath('./outputs')
+    if os.path.exists(root_dir):
+        shutil.rmtree(root_dir)
+    geometry.export_ply(root_dir=root_dir)
+    geometry.export_obj(root_dir=root_dir)
