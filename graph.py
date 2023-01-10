@@ -1,5 +1,6 @@
 import numpy as np
 from binary_heap import BinaryHeap
+from collections import deque
 
 from mylogger import logger
 from func import *
@@ -55,26 +56,43 @@ class Graph:
         :param src: start point
         :param d: distances from point st to all other points
         """
-        heap = BinaryHeap()
+
+        # heap = BinaryHeap()
+        Q = deque()
+
         visited = self.visited
         for i in range(self.n):
             d[i] = np.inf
             visited[i] = False
-        heap.insert(src)
+
+        # heap.insert(src)
+        Q.append(src)
+
         d[src] = 0.
         visited[src] = True
-        while not heap.empty():
-            u = heap.top()
+
+        # while not heap.empty():
+        #     u = heap.top()
+
+        while len(Q) > 0:
+            u = Q[0]
+
             i = self._h[u]
             while i != -1:
                 v = self._to[i]
                 if d[v] > d[u] + self._w[i]:
                     d[v] = d[u] + self._w[i]
                     if not visited[v]:
-                        heap.insert(v)
+
+                        # heap.insert(v)
+                        Q.append(v)
+
                         visited[v] = True
                 i = self._next[i]
-            heap.pop()
+
+            # heap.pop()
+            Q.popleft()
+
             visited[u] = False
 
     def calculate_all_distance(self):
@@ -86,28 +104,41 @@ class Graph:
         @time_it
         def test_distance_symmetric():
             for i in range(self.n):
-                for j in range(self.n):
+                for j in range(i - 1):
                     logger.assert_true(
                         abs(self.distance[i][j] - self.distance[j][i]) < EPSILON,
                         f'd[{i}][{j}]={self.distance[i][j]}, d[{j}][{i}]={self.distance[j][i]}: not symmetric')
 
         calculate_all_distance()
-        test_distance_symmetric()
+        # test_distance_symmetric()
+        # should not be symmetric because weight of edge is not symmetric
 
     def dinic_bfs(self):
-        heap = BinaryHeap()
+        # heap = BinaryHeap()
+        Q = deque()
+
         for i in range(self.n):
             self.dinic_vis[i] = -1
-        heap.insert(self._s)
+
+        # heap.insert(self._s)
+        Q.append(self._s)
+
         self.dinic_vis[self._s] = 0
-        while not heap.empty():
-            now = heap.pop()
+
+        # while not heap.empty():
+        #     now = heap.pop()
+        while len(Q) > 0:
+            now = Q.popleft()
+
             i = self._h[now]
             while i != -1:
                 v = self._to[i]
                 if self._w[i] > 0 and self.dinic_vis[v] == -1:
                     self.dinic_vis[v] = self.dinic_vis[now] + 1
-                    heap.insert(v)
+
+                    # heap.insert(v)
+                    Q.append(v)
+
                 i = self._next[i]
         if self.dinic_vis[self._t] == -1:
             return False
