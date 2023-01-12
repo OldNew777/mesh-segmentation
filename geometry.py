@@ -623,22 +623,23 @@ class Geometry:
         size = aabb[1] - aabb[0]
         half_size = size / 2
         logger.info(f'aabb: {aabb}, center: {center}, size: {size}')
+        light_dis = 5
         light_template = {
             "emission": [1.0, 1.0, 1.0],
-            "scale": 5 * half_size.max().item(),
+            "scale": (light_dis * half_size.mean().item()) ** 2,
             "position": [0, 0, 0],
         }
-        for i in (-1, 1):
+        for i in [-1, 1]:
             light = light_template.copy()
             light['position'] = list(center)
-            light['position'][0] += i * half_size[0] * 5
-            light['position'][1] += i * half_size[1] * 5
+            light['position'][0] += i * half_size[0] * light_dis
+            light['position'][1] += half_size[1] * light_dis * 2
             lights.append(light)
 
             light = light_template.copy()
             light['position'] = list(center)
-            light['position'][1] += i * half_size[1] * 5
-            light['position'][2] += i * half_size[2] * 5
+            light['position'][1] += half_size[1] * light_dis * 2
+            light['position'][2] += i * half_size[2] * light_dis
             lights.append(light)
 
         camera_pos = center + 2 * half_size
