@@ -2,6 +2,7 @@ import math
 import os
 import shutil
 import sys
+import json
 from typing import Tuple, List
 
 from plyfile import PlyData
@@ -276,7 +277,7 @@ class Geometry:
                         dis_max = graph.distance[i][j]
 
         # Choose k_suggest by the greatest 1st derivative of G
-        k_suggest = -1
+        k_suggest = 2
         grad_max = -sys.float_info.max
         for i in range(1, lim - 1):
             grad = Gk[i - 1] - Gk[i]
@@ -285,7 +286,7 @@ class Geometry:
                 k_suggest = i + 2
 
         logger.info(' '.join(map(
-            lambda k_m_2, grad: f'G({k_m_2+2})={grad}',
+            lambda x: f'G({x[0]+2})={x[1]}',
             enumerate(Gk)
         )))
 
@@ -507,12 +508,11 @@ class Geometry:
             file.write(f'mtllib {mtl_filename}\n')
             for color, faces in color_map.items():
                 obj = [
-                    '',
-                    f'g obj_part_{index}',
+                    '\n',
+                    f'g obj_part_{index}\n',
                     f'usemtl color_{index}',
                 ]
                 colors[f'color_{index}'] = color
-                index += 1
 
                 f_num = len(faces)
                 pos = []
@@ -523,16 +523,14 @@ class Geometry:
                         normal.append(self.v[f[i]].normal)
                 assert (f_num * 3) == len(pos) == len(normal)
                 for x in pos:
-                    obj.append(f'v {x[0]} {x[1]} {x[2]}')
+                    obj.append(f'v {x[0]} {x[1]} {x[2]}\n')
                 for n in normal:
-                    obj.append(f'vn {n[0]} {n[1]} {n[2]}')
+                    obj.append(f'vn {n[0]} {n[1]} {n[2]}\n')
                 for i in range(-f_num, 0):
-                    obj.append(f'f {3 * i}//{3 * i} {3 * i + 1}//{3 * i + 1} {3 * i + 2}//{3 * i + 2}')
-
-                for i in range(len(obj)):
-                    obj[i] += '\n'
+                    obj.append(f'f {3 * i}//{3 * i} {3 * i + 1}//{3 * i + 1} {3 * i + 2}//{3 * i + 2}\n')
 
                 file.writelines(obj)
+                index += 1
 
         with open(os.path.join(model_dir, mtl_filename), 'w') as f:
             for name, color in colors.items():
@@ -579,3 +577,94 @@ class Geometry:
 
             for face in self.f:
                 file.write(f'3 {face[0]} {face[1]} {face[2]}\n')
+
+    @time_it
+    def export_opengl_render(self, root_dir: os.path):
+        if os.path.exists(root_dir):
+            shutil.rmtree(root_dir)
+        model_dir = os.path.join(root_dir, 'opengl-render')
+        os.makedirs(model_dir, exist_ok=True)
+        scene_filename = os.path.join(model_dir, f'scene.json')
+
+        colors = {}
+        color2mesh = {}
+        index = 0
+        color_map = self.separate_face_by_color()
+        aabb = np.array([
+            [sys.float_info.max, sys.float_info.max, sys.float_info.max],
+            [-sys.float_info.max, -sys.float_info.max, -sys.float_info.max],
+        ])
+        for color, faces in color_map.items():
+            obj = []
+            color_name = f'color_{index}'
+            colors[color_name] = color
+            color2mesh[color_name] = f'obj_part_{index}.obj'
+
+            f_num = len(faces)
+            for f in faces:
+                for i in range(3):
+                    pos = self.v[f[i]].pos
+                    aabb[0] = np.minimum(aabb[0], pos)
+                    aabb[1] = np.maximum(aabb[1], pos)
+                    normal = self.v[f[i]].normal
+                    obj.append(f'v {pos[0]} {pos[1]} {pos[2]}\n')
+                    obj.append(f'vn {normal[0]} {normal[1]} {normal[2]}\n')
+
+            for i in range(-f_num, 0):
+                obj.append(f'f {3 * i}//{3 * i} {3 * i + 1}//{3 * i + 1} {3 * i + 2}//{3 * i + 2}\n')
+
+            with open(os.path.join(model_dir, color2mesh[color_name]), 'w') as file:
+                file.writelines(obj)
+            index += 1
+
+        materials = []
+        meshes = []
+        lights = []
+        center = (aabb[0] + aabb[1]) / 2
+        size = aabb[1] - aabb[0]
+        light_template = {
+            "emission": [1.0, 1.0, 1.0],
+            "scale": 5 * size.max().item(),
+            "position": [0, 0, 0],
+        }
+        for i in (-1, 1):
+            light = light_template.copy()
+            light['position'][1] = center[1] + i * size[1] * 5
+            light['position'][0] = center[0] + i * size[0] * 5
+            lights.append(light)
+            light = light_template.copy()
+            light['position'][1] = center[1] + i * size[1] * 5
+            light['position'][2] = center[2] + i * size[2] * 5
+            lights.append(light)
+        camera = {
+            "resolution": [1024, 1024],
+            "position": list(center + 2 * size),
+            "front": list(center),
+            "up": [0, 1, 0],
+            "fov": 60,
+        }
+        for name, color in colors.items():
+            materials.append({
+                'name': name,
+                'type': 'phong',
+                'diffuse': list(color),
+            })
+            meshes.append({
+                "transform": {},
+                "file": color2mesh[name],
+                "material": name,
+            })
+        scene = {
+            'materials': materials,
+            'meshes': meshes,
+            'lights': lights,
+            'camera': camera,
+            'renderer': {
+                "enable_vsync": True,
+                "enable_shadow": True,
+                "output_file": "output.png"
+            }
+        }
+
+        with open(scene_filename, 'w') as f:
+            json.dump(scene, f, indent=4)

@@ -33,7 +33,7 @@ if __name__ == "__main__":
     init_palette(max(args.k_max, Geometry.k_limit))
     geometry = mesh_segmentation(filename=os.path.relpath(args.filename), k_max=args.k_max)
 
-    root_dir = os.path.relpath('./outputs')
+    root_dir = os.path.relpath('outputs')
     if os.path.exists(root_dir):
         shutil.rmtree(root_dir)
     geometry.export_ply(root_dir=root_dir)
