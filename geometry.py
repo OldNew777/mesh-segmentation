@@ -9,6 +9,8 @@ from plyfile import PlyData
 import numpy as np
 import random
 
+import numba
+
 from mylogger import logger
 from graph import Graph
 from func import *
@@ -286,7 +288,7 @@ class Geometry:
                 k_suggest = i + 2
 
         logger.info(' '.join(map(
-            lambda x: f'G({x[0]+2})={x[1]}',
+            lambda x: f'G({x[0] + 2})={x[1]}',
             enumerate(Gk)
         )))
 
@@ -510,7 +512,7 @@ class Geometry:
                 obj = [
                     '\n',
                     f'g obj_part_{index}\n',
-                    f'usemtl color_{index}',
+                    f'usemtl color_{index}\n',
                 ]
                 colors[f'color_{index}'] = color
 
@@ -542,8 +544,6 @@ class Geometry:
 
     @time_it
     def export_ply(self, root_dir: os.path):
-        if os.path.exists(root_dir):
-            shutil.rmtree(root_dir)
         model_dir = os.path.join(root_dir, 'ply')
         os.makedirs(model_dir, exist_ok=True)
         model_filename = os.path.join(model_dir, f'model.ply')
@@ -580,8 +580,6 @@ class Geometry:
 
     @time_it
     def export_opengl_render(self, root_dir: os.path):
-        if os.path.exists(root_dir):
-            shutil.rmtree(root_dir)
         model_dir = os.path.join(root_dir, 'opengl-render')
         os.makedirs(model_dir, exist_ok=True)
         scene_filename = os.path.join(model_dir, f'scene.json')
@@ -620,26 +618,34 @@ class Geometry:
         materials = []
         meshes = []
         lights = []
+
         center = (aabb[0] + aabb[1]) / 2
         size = aabb[1] - aabb[0]
+        half_size = size / 2
+        logger.info(f'aabb: {aabb}, center: {center}, size: {size}')
         light_template = {
             "emission": [1.0, 1.0, 1.0],
-            "scale": 5 * size.max().item(),
+            "scale": 5 * half_size.max().item(),
             "position": [0, 0, 0],
         }
         for i in (-1, 1):
             light = light_template.copy()
-            light['position'][1] = center[1] + i * size[1] * 5
-            light['position'][0] = center[0] + i * size[0] * 5
+            light['position'] = list(center)
+            light['position'][0] += i * half_size[0] * 5
+            light['position'][1] += i * half_size[1] * 5
             lights.append(light)
+
             light = light_template.copy()
-            light['position'][1] = center[1] + i * size[1] * 5
-            light['position'][2] = center[2] + i * size[2] * 5
+            light['position'] = list(center)
+            light['position'][1] += i * half_size[1] * 5
+            light['position'][2] += i * half_size[2] * 5
             lights.append(light)
+
+        camera_pos = center + 2 * half_size
         camera = {
             "resolution": [1024, 1024],
-            "position": list(center + 2 * size),
-            "front": list(center),
+            "position": list(camera_pos),
+            "front": list(normalize(center - camera_pos)),
             "up": [0, 1, 0],
             "fov": 60,
         }

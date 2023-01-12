@@ -38,3 +38,4 @@ if __name__ == "__main__":
         shutil.rmtree(root_dir)
     geometry.export_ply(root_dir=root_dir)
     geometry.export_obj(root_dir=root_dir)
+    geometry.export_opengl_render(root_dir=root_dir)

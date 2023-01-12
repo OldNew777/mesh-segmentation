@@ -1,6 +1,9 @@
 import numpy as np
 from collections import deque
 from queue import PriorityQueue
+from tqdm import tqdm
+
+import numba
 
 from mylogger import logger
 from func import *
@@ -83,15 +86,15 @@ class Graph:
                 i = self._next[i]
             visited[u] = False
 
-    def calculate_all_distance(self):
+    def calculate_all_distance(self) -> None:
         """
         Calculate the distance from all points to all other points (dijkstra)
         :return:
         """
 
         @time_it
-        def calculate_all_distance():
-            for i in range(self.n):
+        def calculate_all_distance() -> None:
+            for i in tqdm(range(self.n)):
                 self.calculate_distance(i, self.distance[i])
 
         @time_it
@@ -129,7 +132,7 @@ class Graph:
             return False
         return True
 
-    def dinic_dfs(self, x: int, f: float, t: int):
+    def dinic_dfs(self, x: int, f: float, t: int) -> float:
         if x == t:
             return f
         used = 0.
@@ -148,7 +151,7 @@ class Graph:
             self.dinic_vis[x] = -1
         return used
 
-    def dinic(self, s: int, t: int):
+    def dinic(self, s: int, t: int) -> float:
         """
         find min cut
         """
