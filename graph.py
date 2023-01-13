@@ -51,11 +51,11 @@ class Graph:
         if bidirectional:
             self.add_edge(u=v, v=u, weight=weight, bidirectional=False)
 
-    def calculate_distance(self, src: int, d: np.ndarray):
+    def calculate_distance(self, src: int, dis_src: np.ndarray):
         """
         Calculate the distance from st to all other points (dijkstra)
         :param src: start point
-        :param d: distances from point st to all other points
+        :param dis_src: distances from point src to all other points
         """
 
         class DijkstraPoint(object):
@@ -63,23 +63,23 @@ class Graph:
                 self.index = index
 
             def __lt__(self, other):
-                return d[self.index] < d[other.index]
+                return dis_src[self.index] < dis_src[other.index]
 
         Q = PriorityQueue()
         visited = self.visited
         for i in range(self.n):
-            d[i] = np.inf
+            dis_src[i] = np.inf
             visited[i] = False
         Q.put(DijkstraPoint(src))
-        d[src] = 0.
+        dis_src[src] = 0.
         visited[src] = True
         while not Q.empty():
             u = Q.get().index
             i = self._h[u]
             while i != -1:
                 v = self._to[i]
-                if d[v] > d[u] + self._w[i]:
-                    d[v] = d[u] + self._w[i]
+                if dis_src[v] > dis_src[u] + self._w[i]:
+                    dis_src[v] = dis_src[u] + self._w[i]
                     if not visited[v]:
                         Q.put(DijkstraPoint(v))
                         visited[v] = True

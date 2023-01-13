@@ -103,7 +103,7 @@ class Geometry:
         logger.info(f'n_node = {n_node}, m_edge = {m_edge}')
 
         graph = Graph(n_node, m_edge)
-        self.build_graph(graph, n_node)
+        self.create_graph(graph, n_node)
         graph.calculate_all_distance()
 
         rep, k_suggest = self.choose_k(graph=graph, k_max=k_max)
@@ -135,7 +135,7 @@ class Geometry:
         return geometry_split
 
     @time_it
-    def build_graph(self, graph: Graph, n_face: int):
+    def create_graph(self, graph: Graph, n_face: int):
         edge_map = {}
         center = []
         normal = []
@@ -250,9 +250,7 @@ class Geometry:
         choose_min = sys.float_info.max
         # First, choose the first representative
         for i in range(graph.n):
-            dis_sum = 0.
-            for j in range(graph.n):
-                dis_sum += graph.distance[i][j]
+            dis_sum = graph.distance[i].sum()
             if dis_sum < choose_min:
                 choose_min = dis_sum
                 rep[0] = i
@@ -367,6 +365,7 @@ class Geometry:
                         dis_min = dis_sum
                         rep[i] = cur
 
+            logger.info(f'Iter {iter}: REP = ' + ' '.join(map(str, rep)), ' (before check)')
             check_equal = False
             for i in range(k):
                 for j in range(i):
@@ -633,16 +632,16 @@ class Geometry:
             light = light_template.copy()
             light['position'] = list(center)
             light['position'][0] += i * half_size[0] * light_dis
-            light['position'][1] += half_size[1] * light_dis * 2
+            light['position'][1] += half_size[1] * light_dis
             lights.append(light)
 
             light = light_template.copy()
             light['position'] = list(center)
-            light['position'][1] += half_size[1] * light_dis * 2
+            light['position'][1] += half_size[1] * light_dis
             light['position'][2] += i * half_size[2] * light_dis
             lights.append(light)
 
-        camera_pos = center + 2 * half_size
+        camera_pos = center + half_size[0] * 2
         camera = {
             "resolution": [1024, 1024],
             "position": list(camera_pos),
