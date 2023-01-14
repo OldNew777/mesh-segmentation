@@ -75,11 +75,13 @@ python mesh_segmentation.py
 
 完成 k 路层次化分割**（注：检查时完成 k 路分解，新增层次化 k 路分解）**
 
+记最大迭代轮数为 $\text{max\_iter}$ ， 面片数量为 $F$
 
 
-1. 对于每一层层次化迭代：
-    1. 读取上一轮迭代的结果作为输入模型
-    2. 生成 mesh 的带权对偶图，并计算两个面片间的最短距离。使用 `PriorityQueue` 的 `Dijkstra` 算法，F个出发点各运行一次，因此复杂度 $o(F^2 \log F)$
+
+1. 对于每一层次：
+    1. 读取上一层次的结果作为输入模型
+    2. 生成 mesh 的带权对偶图，并计算两个面片间的最短距离。使用 `PriorityQueue` 的 `Dijkstra` 算法，$F$ 个出发点各运行一次，因此复杂度 $o(F^2 \log F)$
        1. 其中对于相邻面片 $f_{i}, f_{j}$
           1. 角距离：$\text{Ang\_Dist}(\alpha_{ij}) = \eta (1 - \cos \alpha_{ij})$ 凸的情况下 $\eta < 1$ （代码中取0.2），凹的情况下 $\eta = 1$
           2. 测地线距离：$\text{Geod\_Dict}$ 面片质心之间经过模型表面的最短连线
@@ -90,13 +92,13 @@ python mesh_segmentation.py
        2. 为每个面片 $f_i$ 计算属于每一片 $S_l$ 的概率
        2. 若 REP 有更新，则继续迭代
        2. 复杂度 $o(kF + kF^2 + kF^2) = o(kF^2)$
-    5. 对比较确定的面片，直接进行划分；对模糊区域使用 `Dinic` 最小割算法来划分。每次使用 `Dinic` 算法求最小割需要 $o(F \times \frac{3}{2} F) = o(F^2)$，因此该部分复杂度 $o(kF + k^2 \times (F + F^2)) = o(k^2 F^2)$
+    5. 对比较确定的面片，直接进行划分；对模糊区域使用 `Dinic` 最小割算法来划分。每次使用 `Dinic` 算法求最小割需要 $o(C^2 \log C)$ ， 其中 $C$ 为 `fuzzy_region` 的大小，上界为 $o(F^2 \log F)$
 2. 最终合并为结果
    
 
 
 
-故总复杂度为 $o((\log F + \text{max\_iter} + k^2) \times F^2)$
+故总复杂度为 $o((\log F + \text{max\_iter}) \times F^2)$
 
 
 
@@ -106,8 +108,8 @@ Windows 11，i9-9900KF
 
 在 `horse` 样例下（2400个顶点，4796个面片）
 
-| 层次 | Result                                                     |
-| ---- | ---------------------------------------------------------- |
-| 1    | <img src="pictures/k=2.png" alt="k=2" style="zoom:50%;" /> |
-| 2    | <img src="pictures/k=4.png" alt="k=4" style="zoom:50%;" /> |
+| 层次 | Result                                                       |
+| ---- | ------------------------------------------------------------ |
+| 1    | <img src="pictures/level-1.png" alt="k=2" style="zoom:50%;" /> |
+| 2    | <img src="pictures/level-2.png" alt="k=4" style="zoom:50%;" /> |
 

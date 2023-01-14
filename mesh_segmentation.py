@@ -38,7 +38,7 @@ def hierarchical_mesh_segmentation(args: argparse.Namespace, output_dir: os.path
     # geometry.export_opengl_render(root_dir=temp_dir)
     # sys.exit(-1)
 
-    for i in range(2, args.n_hierarchy + 1):
+    for i in range(1, args.n_hierarchy + 1):
         logger.info('Start to segment the meshes in No.{} hierarchy'.format(i))
         output_dir_i = os.path.join(output_dir, f'level-{i}')
         models_temp = []
