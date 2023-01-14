@@ -451,7 +451,6 @@ class Geometry:
                         dis_min = dis_sum
                         rep[i] = cur
 
-            logger.info(f'Iter {iter}: REP = ' + ' '.join(map(str, rep)), ' (before check)')
             check_equal = False
             for i in range(k):
                 for j in range(i):
@@ -682,14 +681,14 @@ class Geometry:
             [-sys.float_info.max, -sys.float_info.max, -sys.float_info.max],
         ])
         for color, faces in color_map.items():
-            color_name = f'color_{index}'
-            colors[color_name] = color
             mesh_filename = os.path.join(model_dir, f'obj_part_{index}.obj')
             while os.path.exists(mesh_filename):
                 index += 1
                 mesh_filename = os.path.join(model_dir, f'obj_part_{index}.obj')
+            color_name = f'color_{index}'
+            colors[color_name] = color
             color2mesh[color_name] = mesh_filename
-            model_filenames.append(color2mesh[color_name])
+            model_filenames.append(mesh_filename)
 
             f_num = len(faces)
             v_list = []

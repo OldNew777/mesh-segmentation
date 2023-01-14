@@ -39,7 +39,7 @@ def hierarchical_mesh_segmentation(args: argparse.Namespace, output_dir: os.path
             geometry = mesh_segmentation(model_filename, args.k_max)
             model_filenames = geometry.export_opengl_render(root_dir=output_dir_i)
 
-            geometry = Geometry.from_files(model_filenames)
+            geometry = Geometry.from_files(model_filenames, remove_duplicated=False)
             shutil.rmtree(output_dir_i)
             geometry.export_ply(root_dir=output_dir_i)
             geometry.export_obj(root_dir=output_dir_i)
