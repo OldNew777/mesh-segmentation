@@ -69,6 +69,8 @@ python mesh_segmentation.py
 
 则可以通过渲染器查看分割结果
 
+同时也生成了 obj+mtl / ply 格式的顶点着色模型，可以直接通过 MeshLab 查看
+
 
 
 ## 算法/复杂度分析
