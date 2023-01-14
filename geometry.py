@@ -28,8 +28,8 @@ def init_palette(k: int):
 
 class Vertex:
     def __init__(self, pos: np.ndarray, normal: np.ndarray):
-        self.pos = pos
-        self.normal = normal
+        self.pos = pos.copy()
+        self.normal = normal.copy()
 
     def __str__(self):
         return f"Vertex pos: {self.pos}, normal: {self.normal}"
@@ -40,8 +40,8 @@ class Vertex:
 
 class Mesh:
     def __init__(self, indexes: np.ndarray, color=default_color):
-        self.indexes = indexes
-        self.color = color
+        self.indexes = indexes.copy()
+        self.color = color.copy()
 
     def __str__(self):
         return f"Mesh color: {self.color}, indexes: {self.indexes}"
@@ -51,6 +51,18 @@ class Mesh:
 
     def __getitem__(self, item):
         return self.indexes[item]
+
+    def __setitem__(self, key, value):
+        self.indexes[key] = value
+
+
+def merge_obj(src_list: list, dst_path: os.path) -> None:
+    # merge obj files
+    with open(dst_path, 'w') as f_out:
+        for src in src_list:
+            with open(src, 'r') as f_src:
+                for line in f_src:
+                    f_out.write(line)
 
 
 class Geometry:
@@ -67,26 +79,100 @@ class Geometry:
         self.edge: List[Tuple[int, int]] = []
         self.edge_w: List[Tuple[float, float]] = []
 
+    def __add__(self, other):
+        self.v.extend(other.v)
+        self.f.extend(other.f)
+        self.edge.extend(other.edge)
+        self.edge_w.extend(other.edge_w)
+        return self
+
     @classmethod
-    @time_it
-    def from_ply(cls, ply_path: os.path) -> 'Geometry':
+    def from_list(cls, v_list: List[np.ndarray], vn_list: List[np.ndarray], f_list: List[np.ndarray],
+                  remove_duplicated: bool, color: np.ndarray = default_color) -> 'Geometry':
+        vertices = []
+        meshes = []
+        index = 0
+        vertice_index = {}
+        for f in f_list:
+            mesh = Mesh(f, color)
+            for i in range(3):
+                pos = v_list[mesh[i]]
+                pos_tuple = tuple(pos)
+                if not remove_duplicated or (pos_tuple not in vertice_index):
+                    vertice_index[pos_tuple] = index
+                    normal = vn_list[mesh[i]]
+                    vertices.append(Vertex(pos, normal))
+                    index += 1
+                mesh[i] = vertice_index[pos_tuple]
+            meshes.append(mesh)
+        return cls(vertices, meshes)
+
+    @classmethod
+    def from_ply(cls, ply_path: os.path, remove_duplicated: bool, color: np.ndarray = default_color) -> 'Geometry':
         logger.assert_true(ply_path.endswith('.ply'), 'File must be a .ply file')
         scene = PlyData.read(ply_path)
         logger.info('Loaded mesh from file:', ply_path)
         logger.info(scene)
 
-        vertices = []
-        meshes = []
-        for v in scene['vertex']:
+        v_list = []
+        vn_list = []
+        f_list = []
+        for i, v in enumerate(scene['vertex']):
             pos = np.array([v['x'], v['y'], v['z']])
             normal = np.array([v['nx'], v['ny'], v['nz']])
-            vertices.append(Vertex(pos, normal))
+            v_list.append(pos)
+            vn_list.append(normal)
         for f in scene['face']:
-            meshes.append(Mesh(f['vertex_indices']))
+            f_list.append(np.array(f['vertex_indices']))
 
-        logger.info(f'len(v) = {len(vertices)}, len(f) = {len(meshes)}')
+        return cls.from_list(v_list, vn_list, f_list, remove_duplicated, color)
 
-        return cls(vertices, meshes)
+    @classmethod
+    def from_obj(cls, obj_path: os.path, remove_duplicated: bool, color: np.ndarray = default_color) -> 'Geometry':
+        logger.assert_true(obj_path.endswith('.obj'), 'File must be a .obj file')
+        v_list = []
+        vn_list = []
+        f_list = []
+        with open(obj_path, 'r') as f:
+            for line in f:
+                if line.startswith('v '):
+                    pos = np.array([float(x) for x in line.split()[1:]])
+                    v_list.append(pos)
+                elif line.startswith('vn '):
+                    normal = np.array([float(x) for x in line.split()[1:]])
+                    vn_list.append(normal)
+                elif line.startswith('f '):
+                    vertices = line.split()[1:]
+                    face = []
+                    for vertice in vertices:
+                        v_vt_vn = vertice.split('/')
+                        v = int(v_vt_vn[0].split('/')[0])
+                        vn = int(v_vt_vn[0].split('/')[2])
+                        logger.assert_true(v == vn, 'v and vn must be the same')
+                        face.append(v)
+                    f_list.append(np.array(face))
+        for face in f_list:
+            face += len(v_list)
+
+        return cls.from_list(v_list, vn_list, f_list, remove_duplicated, color)
+
+    @classmethod
+    @time_it
+    def from_file(cls, file_path: os.path, remove_duplicated: bool, color: np.ndarray = default_color) -> 'Geometry':
+        if file_path.endswith('.ply'):
+            return cls.from_ply(file_path, remove_duplicated, color)
+        elif file_path.endswith('.obj'):
+            return cls.from_obj(file_path, remove_duplicated, color)
+        else:
+            raise Exception('File must be a .ply or .obj file')
+
+    @classmethod
+    @time_it
+    def from_files(cls, file_paths: list, remove_duplicated: bool) -> 'Geometry':
+        geometry = cls([], [])
+        for i, file_path in enumerate(file_paths):
+            geometry += cls.from_file(file_path, remove_duplicated, palette[i])
+        return geometry
 
     def __str__(self):
         return f"Geometry vertices: {self.v}, meshes: {self.f}, edge: {self.edge}, edge_w: {self.edge_w}"
@@ -496,7 +582,7 @@ class Geometry:
         return color_map
 
     @time_it
-    def export_obj(self, root_dir: os.path):
+    def export_obj(self, root_dir: os.path) -> list:
         model_dir = os.path.join(root_dir, 'obj')
         os.makedirs(model_dir, exist_ok=True)
         mtl_filename = 'material.mtl'
@@ -532,7 +618,6 @@ class Geometry:
 
                 file.writelines(obj)
                 index += 1
-
         with open(os.path.join(model_dir, mtl_filename), 'w') as f:
             for name, color in colors.items():
                 f.writelines([
@@ -541,8 +626,10 @@ class Geometry:
                     f'\tKd {color[0]} {color[1]} {color[2]}\n\n',
                 ])
 
+        return [model_filename]
+
     @time_it
-    def export_ply(self, root_dir: os.path):
+    def export_ply(self, root_dir: os.path) -> list:
         model_dir = os.path.join(root_dir, 'ply')
         os.makedirs(model_dir, exist_ok=True)
         model_filename = os.path.join(model_dir, f'model.ply')
@@ -577,12 +664,15 @@ class Geometry:
             for face in self.f:
                 file.write(f'3 {face[0]} {face[1]} {face[2]}\n')
 
+        return [model_filename]
+
     @time_it
-    def export_opengl_render(self, root_dir: os.path):
+    def export_opengl_render(self, root_dir: os.path) -> list:
         model_dir = os.path.join(root_dir, 'opengl-render')
         os.makedirs(model_dir, exist_ok=True)
         scene_filename = os.path.join(model_dir, f'scene.json')
 
+        model_filenames = []
         colors = {}
         color2mesh = {}
         index = 0
@@ -592,27 +682,33 @@ class Geometry:
             [-sys.float_info.max, -sys.float_info.max, -sys.float_info.max],
         ])
         for color, faces in color_map.items():
-            obj = []
             color_name = f'color_{index}'
             colors[color_name] = color
-            color2mesh[color_name] = f'obj_part_{index}.obj'
+            mesh_filename = os.path.join(model_dir, f'obj_part_{index}.obj')
+            while os.path.exists(mesh_filename):
+                index += 1
+                mesh_filename = os.path.join(model_dir, f'obj_part_{index}.obj')
+            color2mesh[color_name] = mesh_filename
+            model_filenames.append(color2mesh[color_name])
 
             f_num = len(faces)
+            v_list = []
+            vn_list = []
             for f in faces:
                 for i in range(3):
                     pos = self.v[f[i]].pos
                     aabb[0] = np.minimum(aabb[0], pos)
                     aabb[1] = np.maximum(aabb[1], pos)
                     normal = self.v[f[i]].normal
-                    obj.append(f'v {pos[0]} {pos[1]} {pos[2]}\n')
-                    obj.append(f'vn {normal[0]} {normal[1]} {normal[2]}\n')
+                    v_list.append(f'v {pos[0]} {pos[1]} {pos[2]}\n')
+                    vn_list.append(f'vn {normal[0]} {normal[1]} {normal[2]}\n')
+            obj = v_list + vn_list
 
             for i in range(-f_num, 0):
                 obj.append(f'f {3 * i}//{3 * i} {3 * i + 1}//{3 * i + 1} {3 * i + 2}//{3 * i + 2}\n')
 
-            with open(os.path.join(model_dir, color2mesh[color_name]), 'w') as file:
+            with open(color2mesh[color_name], 'w') as file:
                 file.writelines(obj)
-            index += 1
 
         materials = []
         meshes = []
@@ -674,3 +770,5 @@ class Geometry:
 
         with open(scene_filename, 'w') as f:
             json.dump(scene, f, indent=4)
+
+        return model_filenames
