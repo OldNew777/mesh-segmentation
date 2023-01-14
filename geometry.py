@@ -80,10 +80,23 @@ class Geometry:
         self.edge_w: List[Tuple[float, float]] = []
 
     def __add__(self, other):
-        self.v.extend(other.v)
-        self.f.extend(other.f)
-        self.edge.extend(other.edge)
-        self.edge_w.extend(other.edge_w)
+        len_v = len(self.v)
+        len_f = len(self.f)
+
+        self.v.extend(other.v.copy())
+
+        f_other = other.f.copy()
+        for f in f_other:
+            f.indexes += len_v
+        self.f.extend(f_other)
+
+        edge_other = other.edge.copy()
+        for i in range(len(edge_other)):
+            edge = edge_other[i]
+            edge_other[i] = (edge[0] + len_f, edge[1] + len_f)
+        self.edge.extend(edge_other)
+
+        self.edge_w.extend(other.edge_w.copy())
         return self
 
     @classmethod
@@ -146,8 +159,8 @@ class Geometry:
                     face = []
                     for vertice in vertices:
                         v_vt_vn = vertice.split('/')
-                        v = int(v_vt_vn[0].split('/')[0])
-                        vn = int(v_vt_vn[0].split('/')[2])
+                        v = int(v_vt_vn[0])
+                        vn = int(v_vt_vn[2])
                         logger.assert_true(v == vn, 'v and vn must be the same')
                         face.append(v)
                     f_list.append(np.array(face))
@@ -752,7 +765,7 @@ class Geometry:
             })
             meshes.append({
                 "transform": {},
-                "file": color2mesh[name],
+                "file": os.path.relpath(color2mesh[name], os.path.dirname(scene_filename)),
                 "material": name,
             })
         scene = {

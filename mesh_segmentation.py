@@ -31,21 +31,27 @@ def hierarchical_mesh_segmentation(args: argparse.Namespace, output_dir: os.path
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     model_filenames = [os.path.relpath(args.filename)]
-    temp_obj_filename = os.path.join(output_dir, 'temp.obj')
+    temp_dir = os.path.join(output_dir, 'temp')
 
-    for i in range(1, args.n_hierarchy):
-        output_dir_i = os.path.join(output_dir, f'level_{i}')
+    # model_filenames = [os.path.relpath(f'./outputs/level-2/opengl-render/obj_part_{j}.obj') for j in range(4)]
+    # geometry = Geometry.from_files(model_filenames, remove_duplicated=False)
+    # geometry.export_opengl_render(root_dir=temp_dir)
+    # sys.exit(-1)
+
+    for i in range(2, args.n_hierarchy + 1):
+        logger.info('Start to segment the meshes in No.{} hierarchy'.format(i))
+        output_dir_i = os.path.join(output_dir, f'level-{i}')
+        models_temp = []
         for model_filename in model_filenames:
             geometry = mesh_segmentation(model_filename, args.k_max)
-            model_filenames = geometry.export_opengl_render(root_dir=output_dir_i)
-
-            geometry = Geometry.from_files(model_filenames, remove_duplicated=False)
-            shutil.rmtree(output_dir_i)
-            geometry.export_ply(root_dir=output_dir_i)
-            geometry.export_obj(root_dir=output_dir_i)
-            geometry.export_opengl_render(root_dir=output_dir_i)
-
-    shutil.rmtree(temp_obj_filename)
+            models_temp += geometry.export_opengl_render(root_dir=temp_dir)
+        # reload and export to get the right output model
+        geometry = Geometry.from_files(models_temp, remove_duplicated=False)
+        shutil.rmtree(temp_dir)
+        geometry.export_ply(root_dir=output_dir_i)
+        geometry.export_obj(root_dir=output_dir_i)
+        model_filenames = geometry.export_opengl_render(root_dir=output_dir_i)
+        logger.info('Finish to segment the meshes in the No.{} hierarchy'.format(i))
 
 
 if __name__ == "__main__":
